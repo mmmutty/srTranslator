@@ -121,8 +121,7 @@ def translate_block_rest_api(text, api_key, model_name, movie_title, target_lang
 def main():
     st.set_page_config(page_title="AI Subtitle Translator", layout="wide")
     
-    st.title("🎬 AI 字幕翻訳ツール (Web対応完全版)")
-    st.markdown("Chrome拡張機能などでも読み込める「BOM付き・整形済み」SRTを出力します。")
+    st.title("🎬 AI 字幕翻訳ツール")
 
     with st.sidebar:
         st.header("設定")
