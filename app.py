@@ -114,7 +114,7 @@ def translate_block_rest_api(text, api_key, model_name, movie_title, target_lang
 def main():
     st.set_page_config(page_title="AI Subtitle Translator", layout="wide")
     
-    st.title("🎬 AI 字幕翻訳ツール (Gemini 3.0対応)")
+    st.title("🎬 AI 字幕翻訳ツール")
     st.markdown("SRTファイルをアップロードして、最新のGeminiで自然な翻訳を行います。")
 
     with st.sidebar:
