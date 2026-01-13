@@ -9,16 +9,13 @@ import os
 # ⚙️ 設定・定数定義
 # ==========================================
 
-# 最新モデルから順に試すリスト
-# 3.0系を最優先に追加しました
+# 最新の正式なモデル名リストに更新しました
 CANDIDATE_MODELS = [
-    "gemini-3.0-pro",         # 3.0 Proモデル
-    "gemini-3.0-flash",       # 3.0 Flashモデル
-    "gemini-2.0-flash-exp",   # 2.0 実験用モデル
-    "gemini-1.5-pro-002",
-    "gemini-1.5-flash-002",
-    "gemini-1.5-pro-latest",
-    "gemini-1.5-flash-latest"
+    "gemini-2.0-flash",          # 2.0の正式版（おすすめ）
+    "gemini-1.5-flash",          # 最も安定して動く軽量モデル
+    "gemini-1.5-pro",           # 高性能モデル
+    "gemini-1.5-flash-8b",      # 超軽量モデル
+    "gemini-2.0-flash-exp"      # 実験用（混雑時はエラーになりやすい）
 ]
 
 # ==========================================
@@ -26,11 +23,9 @@ CANDIDATE_MODELS = [
 # ==========================================
 
 def find_working_model(api_key, log_area):
-    """利用可能な最新モデルを上から順に探す関数"""
+    """エラーの詳細を画面に表示するように強化した関数"""
     headers = {'Content-Type': 'application/json'}
-    test_data = {
-        "contents": [{"parts": [{"text": "Test"}]}]
-    }
+    test_data = {"contents": [{"parts": [{"text": "Test"}]}]}
 
     for model in CANDIDATE_MODELS:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
@@ -41,10 +36,20 @@ def find_working_model(api_key, log_area):
             if response.status_code == 200:
                 log_area.success(f"✅ 接続成功！モデル: {model} を使用します。")
                 return model
-        except:
-            pass
+            else:
+                # ❌ ここでエラーの具体的な理由を取得して表示する
+                try:
+                    error_msg = response.json().get('error', {}).get('message', response.text)
+                except:
+                    error_msg = response.text
+                
+                # 画面に警告として理由を出す
+                st.warning(f"⚠️ {model}: 接続失敗 (Status: {response.status_code})\n理由: {error_msg}")
+                
+        except Exception as e:
+            st.error(f"📡 通信エラー ({model}): {str(e)}")
     
-    log_area.error("❌ 利用可能なモデルが見つかりませんでした。APIキーを確認してください。")
+    log_area.error("❌ 全ての候補モデルで接続に失敗しました。")
     return None
 
 def split_srt_blocks(srt_content):
