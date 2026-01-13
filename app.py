@@ -9,13 +9,13 @@ import os
 # ⚙️ 設定・定数定義
 # ==========================================
 
-# 最新の正式なモデル名リストに更新しました
+# 最新の正式なモデル名リスト
 CANDIDATE_MODELS = [
     "gemini-2.0-flash",          # 2.0の正式版（おすすめ）
     "gemini-1.5-flash",          # 最も安定して動く軽量モデル
     "gemini-1.5-pro",           # 高性能モデル
     "gemini-1.5-flash-8b",      # 超軽量モデル
-    "gemini-2.0-flash-exp"      # 実験用（混雑時はエラーになりやすい）
+    "gemini-2.0-flash-exp"      # 実験用
 ]
 
 # ==========================================
@@ -37,13 +37,10 @@ def find_working_model(api_key, log_area):
                 log_area.success(f"✅ 接続成功！モデル: {model} を使用します。")
                 return model
             else:
-                # ❌ ここでエラーの具体的な理由を取得して表示する
                 try:
                     error_msg = response.json().get('error', {}).get('message', response.text)
                 except:
                     error_msg = response.text
-                
-                # 画面に警告として理由を出す
                 st.warning(f"⚠️ {model}: 接続失敗 (Status: {response.status_code})\n理由: {error_msg}")
                 
         except Exception as e:
@@ -53,9 +50,19 @@ def find_working_model(api_key, log_area):
     return None
 
 def split_srt_blocks(srt_content):
+    # 【重要】ズレ防止のための強化版ロジック
     content = srt_content.replace('\r\n', '\n').replace('\r', '\n')
-    blocks = re.split(r'\n\n+', content.strip())
+    # 空白を含む空行でも区切れるように正規表現を強化
+    blocks = re.split(r'\n\s*\n', content.strip())
     return [b for b in blocks if b.strip()]
+
+def sanitize_timecode(time_str):
+    """Webツール用にタイムコードを厳密に整形する"""
+    # 矢印を " --> " に統一
+    t = re.sub(r'\s*[-=]+>\s*', ' --> ', time_str)
+    # カンマ区切りに統一（Webツール対策）
+    t = t.replace('.', ',')
+    return t
 
 def translate_block_rest_api(text, api_key, model_name, movie_title, target_language):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
@@ -114,8 +121,8 @@ def translate_block_rest_api(text, api_key, model_name, movie_title, target_lang
 def main():
     st.set_page_config(page_title="AI Subtitle Translator", layout="wide")
     
-    st.title("🎬 AI 字幕翻訳ツール")
-    st.markdown("SRTファイルをアップロードして、最新のGeminiで自然な翻訳を行います。")
+    st.title("🎬 AI 字幕翻訳ツール (Web対応完全版)")
+    st.markdown("Chrome拡張機能などでも読み込める「BOM付き・整形済み」SRTを出力します。")
 
     with st.sidebar:
         st.header("設定")
@@ -152,23 +159,44 @@ def main():
                 
                 for i, block in enumerate(blocks):
                     lines = block.split('\n')
-                    if len(lines) >= 3:
-                        seq_num = lines[0]
-                        timecode = lines[1]
-                        original_text = "\n".join(lines[2:])
+                    # 少なくとも番号とタイムコードがあるか確認
+                    if len(lines) >= 2:
+                        seq_num = lines[0].strip()
                         
-                        translated_text = translate_block_rest_api(
-                            original_text, 
-                            api_key_input, 
-                            working_model, 
-                            movie_title_input, 
-                            target_lang_input
-                        )
+                        # タイムコード行を探す（2行目にあるとは限らないため検索）
+                        time_line_index = -1
+                        for idx, line in enumerate(lines):
+                            if '-->' in line:
+                                time_line_index = idx
+                                break
                         
-                        new_block = f"{seq_num}\n{timecode}\n{translated_text}\n"
-                        translated_srt.append(new_block)
+                        if time_line_index != -1:
+                            timecode = lines[time_line_index].strip()
+                            original_text = "\n".join(lines[time_line_index + 1:]) # タイムコード以降を本文とする
+                            
+                            # 翻訳実行（本文がある場合のみ）
+                            if original_text.strip():
+                                translated_text = translate_block_rest_api(
+                                    original_text, 
+                                    api_key_input, 
+                                    working_model, 
+                                    movie_title_input, 
+                                    target_lang_input
+                                )
+                            else:
+                                translated_text = ""
+                            
+                            # 【整形】タイムコードをWeb用にきれいにする
+                            clean_time = sanitize_timecode(timecode)
+                            
+                            # 【整形】Windows改行(CRLF)で結合
+                            new_block = f"{seq_num}\r\n{clean_time}\r\n{translated_text}\r\n\r\n"
+                            translated_srt.append(new_block)
+                        else:
+                            # 構造が変な場合はそのまま保持（改行だけCRLFに）
+                            translated_srt.append(block.replace('\n', '\r\n') + "\r\n\r\n")
                     else:
-                        translated_srt.append(block + "\n")
+                        translated_srt.append(block.replace('\n', '\r\n') + "\r\n\r\n")
                     
                     progress = (i + 1) / total_blocks
                     progress_bar.progress(progress)
@@ -176,18 +204,19 @@ def main():
                     if (i + 1) % 5 == 0:
                          log_area.text(f"⏳ 処理中... {i + 1}/{total_blocks} 完了")
                     
-                    time.sleep(0.5) # 最新モデルは高速なため待機時間を少し短縮
+                    time.sleep(0.5)
 
                 progress_bar.progress(1.0)
-                status_area.success("✅ 翻訳完了！")
+                status_area.success("✅ 翻訳＆整形完了！")
                 log_area.empty()
                 
-                final_content = "\n".join(translated_srt)
-                new_filename = f"{uploaded_file.name.replace('.srt', '')}_{target_lang_input}_v3.srt"
+                final_content = "".join(translated_srt)
+                new_filename = f"{uploaded_file.name.replace('.srt', '')}_{target_lang_input}_WebReady.srt"
                 
+                # 【重要】BOM付きUTF-8 (utf-8-sig) でダウンロードさせる
                 st.download_button(
-                    label="📥 翻訳されたSRTをダウンロード",
-                    data=final_content,
+                    label="📥 翻訳されたSRTをダウンロード (Web対応版)",
+                    data=final_content.encode('utf-8-sig'),
                     file_name=new_filename,
                     mime="text/plain"
                 )
