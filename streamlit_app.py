@@ -127,7 +127,7 @@ def main():
         st.header("Settings")
         api_key_input = st.text_input("Gemini API Key", type="password", placeholder="AIzaSy...")
         st.markdown("---")
-        movie_title_input = st.text_input("Movie Title", value="The Great Escaper")
+        movie_title_input = st.text_input("Movie Title")
         target_lang_input = st.text_input("Target Language", value="Japanese")
         st.markdown("---")
         st.info("Translation may take a few minutes. Please do not close the browser.")
